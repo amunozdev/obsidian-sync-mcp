@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+### Fixes
+- Keep large `list_notes` limits backward compatible for full-vault backup clients while retaining pagination.
+
 ## 0.7.1
 
 ### Features

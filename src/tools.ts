@@ -170,9 +170,9 @@ export function registerTools(
                 .number()
                 .int()
                 .min(1)
-                .max(1000)
+                .max(100000)
                 .optional()
-                .describe("Max number of notes to return. Default 100."),
+                .describe("Max number of notes to return. Default 100. Large values remain supported for backward-compatible full exports."),
             format: z
                 .enum(["markdown", "json"])
                 .optional()

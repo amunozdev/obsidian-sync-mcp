@@ -160,6 +160,12 @@ describe("E2E: list_notes", () => {
         assert.equal(data.next_offset, 1);
         assert.ok(data.total >= 3);
     });
+
+    it("keeps large full-export limits backward compatible", async () => {
+        const text = await callTool("list_notes", { limit: 100000 });
+        assert.ok(text.includes("Welcome.md"));
+        assert.ok(text.includes("projects/test.md"));
+    });
 });
 
 describe("E2E: search_notes", () => {

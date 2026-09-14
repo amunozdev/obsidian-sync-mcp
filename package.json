@@ -1,13 +1,13 @@
 {
     "name": "obsidian-sync-mcp",
-    "mcpName": "io.github.es617/obsidian-sync-mcp",
-    "version": "0.6.5",
+    "mcpName": "io.github.amunozdev/obsidian-sync-mcp",
+    "version": "0.7.0",
     "description": "Give any AI agent access to your Obsidian vault over MCP",
     "type": "module",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/es617/obsidian-sync-mcp.git"
+        "url": "git+https://github.com/amunozdev/obsidian-sync-mcp.git"
     },
     "keywords": [
         "mcp",

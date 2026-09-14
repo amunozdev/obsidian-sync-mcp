@@ -54,9 +54,16 @@ export function parseFrontmatterAndLinks(content: string): NoteMetadata {
         }
     }
 
-    // Inline #tags
-    for (const match of content.matchAll(/(^|\s)#([\w/-]+)/g)) {
-        tags.add(match[2]);
+    // Inline #tags. Obsidian ignores tags inside code and requires at least
+    // one non-numeric character in a tag.
+    const searchableContent = content
+        .replace(/```[\s\S]*?```/g, "")
+        .replace(/~~~[\s\S]*?~~~/g, "")
+        .replace(/`[^`\n]*`/g, "");
+    for (const match of searchableContent.matchAll(/(^|\s)#([\p{L}\p{N}_/-]+)/gu)) {
+        const tag = match[2];
+        if (![...tag].some((character) => /[\p{L}_/-]/u.test(character))) continue;
+        tags.add(tag);
     }
 
     // [[wikilinks]]

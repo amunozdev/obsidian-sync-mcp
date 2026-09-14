@@ -10,7 +10,7 @@ import type { MetaEntry } from "../lib/livesync-commonlib/src/API/DirectFileMani
 import { isPathProbablyObfuscated, decrypt } from "octagonal-wheels/encryption/encryption";
 import { clearHandlers } from "../lib/livesync-commonlib/src/replication/SyncParamsHandler.ts";
 import { parseFrontmatterAndLinks } from "./parse.js";
-import type { VaultBackend, NoteInfo, NoteListing } from "./vault-backend.js";
+import type { ConditionalWriteOptions, ConditionalWriteResult, VaultBackend, NoteInfo, NoteListing } from "./vault-backend.js";
 import { deriveContent } from "./index-sync.js";
 import { classifyIds, type IdFormat } from "./id-format.js";
 
@@ -125,12 +125,14 @@ export class Vault implements VaultBackend {
     }
 
     private static mdFilter(meta: any): boolean {
-        return (meta.path ?? "").endsWith(".md");
+        const path = meta.path ?? "";
+        return path.endsWith(".md") && !path.startsWith(".trash/") && !path.includes("/.trash/");
     }
 
     private static docToChange(doc: any, callback: (path: string, content: string | null, mtime?: number, seq?: string | number) => void, seq?: string | number) {
         const path = doc.path ?? "";
         if (!path.endsWith(".md")) return;
+        if (path.startsWith(".trash/") || path.includes("/.trash/")) return;
         // null => deleted (remove); "" => existing empty note (index it, don't drop)
         const content = deriveContent(doc);
         callback(path, content, content === null ? undefined : doc.mtime, seq);
@@ -236,6 +238,17 @@ export class Vault implements VaultBackend {
         });
     }
 
+    async writeNoteConditional(path: string, content: string, options: ConditionalWriteOptions): Promise<ConditionalWriteResult> {
+        const metadata = await this.getMetadata(path);
+        if (options.createOnly && metadata) {
+            return { ok: false, conflict: true, currentMtime: metadata.mtime, reason: "File already exists" };
+        }
+        if (options.expectedMtime !== undefined && metadata?.mtime !== options.expectedMtime) {
+            return { ok: false, conflict: true, currentMtime: metadata?.mtime, reason: "File changed since it was read" };
+        }
+        return { ok: await this.writeNote(path, content) };
+    }
+
     async deleteNote(path: string): Promise<boolean> {
         this.validatePath(path);
         clearHandlers();
@@ -272,13 +285,22 @@ export class Vault implements VaultBackend {
     }
 
     async listNotesWithMtime(folder?: string): Promise<NoteListing[]> {
+        return this.listFilesByExtensions(folder, [".md"]);
+    }
+
+    async listTextFilesWithMtime(folder?: string): Promise<NoteListing[]> {
+        return this.listFilesByExtensions(folder, [".md", ".base", ".canvas"]);
+    }
+
+    private async listFilesByExtensions(folder: string | undefined, extensions: string[]): Promise<NoteListing[]> {
         if (folder && !folder.endsWith("/")) folder += "/";
         const results: NoteListing[] = [];
         for await (const doc of this.manipulator.enumerateAllNormalDocs({ metaOnly: true })) {
             const entry = doc as MetaEntry;
             if (entry.deleted) continue;
             const notePath = entry.path ?? "";
-            if (!notePath.endsWith(".md")) continue;
+            if (notePath.startsWith(".trash/") || notePath.includes("/.trash/")) continue;
+            if (!extensions.some((extension) => notePath.endsWith(extension))) continue;
             if (folder && !notePath.startsWith(folder)) continue;
             results.push({ path: notePath, mtime: entry.mtime ?? 0 });
         }

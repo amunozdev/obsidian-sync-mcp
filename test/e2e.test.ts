@@ -104,6 +104,8 @@ before(async () => {
     await writeFile(join(vaultDir, "Welcome.md"), "---\ntitle: Welcome\ntags: [intro]\n---\n# Welcome\nHello world");
     await writeFile(join(vaultDir, "daily/2026-03-24.md"), "# Daily Note");
     await writeFile(join(vaultDir, "projects/test.md"), "See [[Welcome]]\n\n#project");
+    await writeFile(join(vaultDir, "projects/overview.base"), "views:\n  - type: table\n    name: Overview\n");
+    await writeFile(join(vaultDir, "projects/map.canvas"), '{"nodes":[],"edges":[]}');
 
     await startServer({ VAULT_PATH: vaultDir, VAULT_NAME: "TestVault" });
 });
@@ -150,6 +152,37 @@ describe("E2E: list_notes", () => {
         assert.ok(text.includes("Welcome.md"));
         assert.ok(!text.includes("projects/test.md"));
     });
+
+    it("returns structured pagination metadata", async () => {
+        const data = JSON.parse(await callTool("list_notes", { limit: 1, format: "json" }));
+        assert.equal(data.notes.length, 1);
+        assert.equal(data.offset, 0);
+        assert.equal(data.next_offset, 1);
+        assert.ok(data.total >= 3);
+    });
+});
+
+describe("E2E: search_notes", () => {
+    it("searches content on demand", async () => {
+        const text = await callTool("search_notes", { query: "Hello world" });
+        assert.ok(text.includes("Welcome.md"));
+        assert.ok(text.includes("Hello world"));
+    });
+});
+
+describe("E2E: Obsidian text formats", () => {
+    it("lists and reads Bases and JSON Canvas files", async () => {
+        const files = JSON.parse(await callTool("list_text_files", { folder: "projects" }));
+        assert.ok(files.files.some((file: any) => file.path.endsWith("overview.base")));
+        assert.ok(files.files.some((file: any) => file.path.endsWith("map.canvas")));
+        assert.ok((await callTool("read_text_file", { path: "projects/map.canvas" })).includes('"nodes"'));
+    });
+
+    it("validates JSON Canvas before writing", async () => {
+        const text = await callTool("write_text_file", { path: "projects/bad.canvas", content: "not-json" });
+        assert.ok(text.includes("Invalid JSON Canvas"));
+        assert.ok(!existsSync(join(vaultDir, "projects/bad.canvas")));
+    });
 });
 
 describe("E2E: read_note", () => {
@@ -165,6 +198,12 @@ describe("E2E: write_note", () => {
         const text = await callTool("write_note", { path: "ci-test.md", content: "# CI Test\nWritten by e2e" });
         assert.ok(text.includes("Note saved"));
         assert.ok(existsSync(join(vaultDir, "ci-test.md")));
+    });
+
+    it("protects create-only writes", async () => {
+        const text = await callTool("write_note", { path: "Welcome.md", content: "overwrite", create_only: true });
+        assert.ok(text.includes("Conflict"));
+        assert.ok((await callTool("read_note", { path: "Welcome.md" })).includes("Hello world"));
     });
 });
 
@@ -229,18 +268,49 @@ describe("E2E: get_note_metadata", () => {
 
 describe("E2E: move_note", () => {
     it("moves a note across folders", async () => {
-        const text = await callTool("move_note", { from: "ci-test.md", to: "archive/ci-test.md" });
+        const text = await callTool("move_note", { from: "ci-test.md", to: "archive/ci-test.md", confirm: true });
         assert.ok(text.includes("Moved"));
         assert.ok(!existsSync(join(vaultDir, "ci-test.md")));
         assert.ok(existsSync(join(vaultDir, "archive/ci-test.md")));
     });
 });
 
+describe("E2E: safe rename", () => {
+    it("previews and rewrites incoming links", async () => {
+        await callTool("write_note", { path: "rename-target.md", content: "target", create_only: true });
+        await callTool("write_note", { path: "rename-source.md", content: "See [[rename-target]]", create_only: true });
+        const preview = JSON.parse(await callTool("preview_rename_note", { from: "rename-target.md", to: "renamed.md" }));
+        assert.equal(preview.total_links, 1);
+        const result = await callTool("rename_note", { from: "rename-target.md", to: "renamed.md", confirm: true });
+        assert.ok(result.includes("Updated 1 incoming links"));
+        assert.ok((await callTool("read_note", { path: "rename-source.md" })).includes("[[renamed]]"));
+    });
+});
+
 describe("E2E: delete_note", () => {
     it("deletes a note", async () => {
-        const text = await callTool("delete_note", { path: "archive/ci-test.md" });
+        const text = await callTool("delete_note", { path: "archive/ci-test.md", confirm: true });
         assert.ok(text.includes("Deleted"));
         assert.ok(!existsSync(join(vaultDir, "archive/ci-test.md")));
+    });
+});
+
+describe("E2E: trash_note", () => {
+    it("moves notes to recoverable trash and hides them from listings", async () => {
+        await callTool("write_note", { path: "trash-me.md", content: "recoverable", create_only: true });
+        const text = await callTool("trash_note", { path: "trash-me.md" });
+        assert.ok(text.includes("Moved to trash"));
+        assert.ok(!existsSync(join(vaultDir, "trash-me.md")));
+        assert.ok(!((await callTool("list_notes")).includes("trash-me.md")));
+    });
+});
+
+describe("E2E: get_server_status", () => {
+    it("reports safe operational state", async () => {
+        const status = JSON.parse(await callTool("get_server_status"));
+        assert.equal(status.mode, "filesystem");
+        assert.equal(status.readOnly, false);
+        assert.ok(Array.isArray(status.supported_text_extensions));
     });
 });
 
@@ -302,10 +372,10 @@ describe("E2E: READ_ONLY mode", () => {
 
         const list = await mcpCall("tools/list", {});
         const tools: string[] = (list?.result?.tools ?? []).map((t: any) => t.name);
-        for (const w of ["write_note", "edit_note", "delete_note", "move_note"]) {
+        for (const w of ["write_note", "edit_note", "delete_note", "move_note", "write_text_file", "trash_note", "rename_note"]) {
             assert.ok(!tools.includes(w), `${w} should not be registered in READ_ONLY mode`);
         }
-        for (const r of ["read_note", "list_notes", "list_folders", "list_tags", "get_note_metadata"]) {
+        for (const r of ["read_note", "list_notes", "list_folders", "list_tags", "get_note_metadata", "search_notes", "list_text_files", "read_text_file", "get_server_status", "preview_rename_note"]) {
             assert.ok(tools.includes(r), `${r} should remain available in READ_ONLY mode`);
         }
 

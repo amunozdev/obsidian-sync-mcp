@@ -162,6 +162,7 @@ export class SearchIndex {
         const prefix = folder && !folder.endsWith("/") ? folder + "/" : folder;
         const entries = [...this.knownPaths]
             .filter((p) => p.endsWith(".md"))
+            .filter((p) => !p.startsWith(".trash/") && !p.includes("/.trash/"))
             .filter((p) => !prefix || p.startsWith(prefix))
             .map((p) => ({ path: p, mtime: this.mtimes.get(p) ?? 0 }));
         return entries.sort((a, b) => a.path.localeCompare(b.path));

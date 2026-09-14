@@ -12,16 +12,30 @@ export interface NoteListing {
     mtime: number;
 }
 
+export interface ConditionalWriteOptions {
+    createOnly?: boolean;
+    expectedMtime?: number;
+}
+
+export interface ConditionalWriteResult {
+    ok: boolean;
+    conflict?: boolean;
+    currentMtime?: number;
+    reason?: string;
+}
+
 export interface VaultBackend {
     init(): Promise<void>;
     close(): Promise<void>;
     readNote(path: string): Promise<string | null>;
     writeNote(path: string, content: string): Promise<boolean>;
+    writeNoteConditional(path: string, content: string, options: ConditionalWriteOptions): Promise<ConditionalWriteResult>;
     deleteNote(path: string): Promise<boolean>;
     moveNote(from: string, to: string): Promise<boolean>;
     getMetadata(path: string): Promise<NoteInfo | null>;
     listNotes(folder?: string): Promise<string[]>;
     listNotesWithMtime(folder?: string): Promise<NoteListing[]>;
+    listTextFilesWithMtime(folder?: string): Promise<NoteListing[]>;
     watchChanges?(callback: (path: string, content: string | null, mtime?: number, seq?: string | number) => void): void;
     /** Catch up on changes since a sequence. Returns the new sequence. CouchDB only. */
     catchUp?(since: string, callback: (path: string, content: string | null, mtime?: number) => void, onBatch?: (since: string, processed: number) => Promise<void>): Promise<string>;

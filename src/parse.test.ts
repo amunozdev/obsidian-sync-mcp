@@ -51,6 +51,15 @@ Content`;
         assert.ok(result.tags.includes("project/sub-tag"));
     });
 
+    it("matches Obsidian tag rules and ignores code", () => {
+        const content = "Issue #123 and #válido\n```css\ncolor: #6366f1;\n```\n`#inline-code`";
+        const result = parseFrontmatterAndLinks(content);
+        assert.ok(result.tags.includes("válido"));
+        assert.ok(!result.tags.includes("123"));
+        assert.ok(!result.tags.includes("6366f1"));
+        assert.ok(!result.tags.includes("inline-code"));
+    });
+
     it("deduplicates tags from frontmatter and inline", () => {
         const content = `---
 tags: [shared]

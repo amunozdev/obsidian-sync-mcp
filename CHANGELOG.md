@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+### Features
+- Add bounded on-demand full-text search without persisting plaintext note content.
+- Add pagination and JSON output to note listings.
+- Add conditional writes with create-only and expected-mtime conflict protection.
+- Add recoverable trash, permanent-delete confirmation, and rename previews with incoming-link updates.
+- Add read/write/list support for Obsidian Bases and JSON Canvas text files.
+- Add a safe operational status tool and align tag parsing with Obsidian behavior.
+
 ## 0.6.5
 
 ### Fixes

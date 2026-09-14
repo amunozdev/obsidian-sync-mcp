@@ -3,7 +3,7 @@ import { dirname, resolve, sep } from "path";
 import { realpathSync } from "fs";
 import { glob } from "fs/promises";
 import { parseFrontmatterAndLinks } from "./parse.js";
-import type { VaultBackend, NoteInfo, NoteListing } from "./vault-backend.js";
+import type { ConditionalWriteOptions, ConditionalWriteResult, VaultBackend, NoteInfo, NoteListing } from "./vault-backend.js";
 
 export class LocalVault implements VaultBackend {
     private root: string;
@@ -53,6 +53,17 @@ export class LocalVault implements VaultBackend {
         } catch {
             return false;
         }
+    }
+
+    async writeNoteConditional(path: string, content: string, options: ConditionalWriteOptions): Promise<ConditionalWriteResult> {
+        const metadata = await this.getMetadata(path);
+        if (options.createOnly && metadata) {
+            return { ok: false, conflict: true, currentMtime: metadata.mtime, reason: "File already exists" };
+        }
+        if (options.expectedMtime !== undefined && metadata?.mtime !== options.expectedMtime) {
+            return { ok: false, conflict: true, currentMtime: metadata?.mtime, reason: "File changed since it was read" };
+        }
+        return { ok: await this.writeNote(path, content) };
     }
 
     async deleteNote(path: string): Promise<boolean> {
@@ -110,13 +121,23 @@ export class LocalVault implements VaultBackend {
     }
 
     async listNotesWithMtime(folder?: string): Promise<NoteListing[]> {
+        return this.listFilesByExtensions(folder, [".md"]);
+    }
+
+    async listTextFilesWithMtime(folder?: string): Promise<NoteListing[]> {
+        return this.listFilesByExtensions(folder, [".md", ".base", ".canvas"]);
+    }
+
+    private async listFilesByExtensions(folder: string | undefined, extensions: string[]): Promise<NoteListing[]> {
         if (folder && !folder.endsWith("/") && !folder.endsWith("\\")) folder += "/";
         const searchDir = folder ? await this.safePath(folder) : this.root;
         const entries: string[] = [];
         try {
-            for await (const entry of glob("**/*.md", { cwd: searchDir })) {
+            for await (const entry of glob("**/*", { cwd: searchDir })) {
                 const full = folder ? `${folder}${entry}` : entry;
                 if (full.startsWith(".obsidian/") || full.includes("/.obsidian/")) continue;
+                if (full.startsWith(".trash/") || full.includes("/.trash/")) continue;
+                if (!extensions.some((extension) => full.endsWith(extension))) continue;
                 entries.push(full);
             }
         } catch {

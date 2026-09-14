@@ -14,6 +14,12 @@ export interface ServerStatus {
 }
 
 const debugLogging = process.env.LOG_LEVEL === "debug";
+const parseBoundedInteger = (value: string | undefined, fallback: number, minimum: number, maximum: number) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+};
+const SEARCH_MAX_SCAN = parseBoundedInteger(process.env.SEARCH_MAX_SCAN, 500, 1, 2000);
+const SEARCH_TIMEOUT_MS = parseBoundedInteger(process.env.SEARCH_TIMEOUT_MS, 15000, 100, 60000);
 
 const WRITE_TOOLS = ["write_note", "edit_note", "delete_note", "move_note"] as const;
 
@@ -266,10 +272,11 @@ export function registerTools(
             folder: z.string().optional().describe("Optional vault-relative folder scope."),
             modified_after: z.string().optional().describe("Optional ISO date cutoff."),
             limit: z.coerce.number().int().min(1).max(50).optional().describe("Maximum matches. Default 20."),
+            max_scan: z.coerce.number().int().min(1).max(2000).optional().describe("Maximum notes to inspect, capped by the server. Default 500."),
             context: z.coerce.number().int().min(20).max(500).optional().describe("Characters of context around each match. Default 120."),
             format: z.enum(["markdown", "json"]).optional().describe("Response format. Default markdown."),
         }),
-        execute: async ({ query, folder, modified_after, limit, context, format }) => {
+        execute: async ({ query, folder, modified_after, limit, max_scan, context, format }) => {
             let notes = searchIndex.listWithMtime(folder);
             if (notes.length === 0) notes = await vault.listNotesWithMtime(folder);
             if (modified_after) {
@@ -279,7 +286,17 @@ export function registerTools(
             }
             const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
             const matches: Array<{ path: string; mtime: number; snippet: string; deep_link: string }> = [];
+            const scanLimit = Math.min(max_scan ?? SEARCH_MAX_SCAN, SEARCH_MAX_SCAN);
+            const deadline = Date.now() + SEARCH_TIMEOUT_MS;
+            let scanned = 0;
+            let timedOut = false;
             for (const note of notes) {
+                if (scanned >= scanLimit) break;
+                if (Date.now() >= deadline) {
+                    timedOut = true;
+                    break;
+                }
+                scanned++;
                 const content = await vault.readNote(note.path);
                 if (content === null) continue;
                 const lower = content.toLocaleLowerCase();
@@ -292,9 +309,12 @@ export function registerTools(
                 });
                 if (matches.length >= (limit ?? 20)) break;
             }
-            if (format === "json") return JSON.stringify({ query, matches });
+            const truncated = scanned < notes.length && matches.length < (limit ?? 20);
+            if (format === "json") return JSON.stringify({ query, matches, scanned, total_candidates: notes.length, truncated, timed_out: timedOut });
             if (matches.length === 0) return `No notes found for: ${query}`;
-            return matches.map((match) => `- [${match.path}](${match.deep_link})\n  ${match.snippet}`).join("\n");
+            const result = matches.map((match) => `- [${match.path}](${match.deep_link})\n  ${match.snippet}`).join("\n");
+            const notice = truncated ? `\n\nSearch stopped after ${scanned} of ${notes.length} candidate notes${timedOut ? " because the time limit was reached" : ""}. Narrow the folder/date scope or raise max_scan within the server cap.` : "";
+            return result + notice;
         },
     });
     server.addTool({

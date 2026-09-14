@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Features
+- Load canonical MCP instructions directly from a vault note with `MCP_INSTRUCTIONS_NOTE`.
+- Bound on-demand search by both scanned-note count and elapsed time.
+
 ## 0.7.0
 
 ### Features

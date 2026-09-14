@@ -411,6 +411,25 @@ describe("E2E: MCP_INSTRUCTIONS", () => {
         assert.ok(!instr.includes("inline-rule-XYZ"), "inline env ignored when file is set");
         assert.ok(serverLogs.includes("ignoring MCP_INSTRUCTIONS env var"), "should warn about precedence");
     });
+
+    it("vault note wins over file and environment instruction sources", async () => {
+        await stopServer();
+        const instructionsFile = join(vaultDir, "external-rules.md");
+        await writeFile(instructionsFile, "file-rule-ignored");
+        await writeFile(join(vaultDir, "canonical-rules.md"), "vault-note-rule-GHI");
+        await startServer({
+            VAULT_PATH: vaultDir,
+            VAULT_NAME: "TestVault",
+            MCP_INSTRUCTIONS: "inline-rule-ignored",
+            MCP_INSTRUCTIONS_FILE: instructionsFile,
+            MCP_INSTRUCTIONS_NOTE: "canonical-rules.md",
+        });
+        const instr: string = lastInitResult?.result?.instructions ?? "";
+        assert.ok(instr.includes("vault-note-rule-GHI"), "vault note contents appended");
+        assert.ok(!instr.includes("file-rule-ignored"), "file ignored when vault note is set");
+        assert.ok(!instr.includes("inline-rule-ignored"), "environment ignored when vault note is set");
+        assert.ok(serverLogs.includes("ignoring file and environment instruction sources"), "should warn about precedence");
+    });
 });
 
 describe("E2E: cold restart with persisted index", () => {

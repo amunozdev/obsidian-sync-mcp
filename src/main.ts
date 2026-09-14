@@ -40,12 +40,17 @@ const WRITE_FOLDERS = parseWriteFolders(process.env.WRITE_FOLDERS);
 const PACKAGE_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 
 // Extra instructions appended to the MCP `instructions` string.
-// File wins if both are set (loud warning); missing file is fatal.
+// A vault note wins over a file, which wins over the environment value.
+const MCP_INSTRUCTIONS_NOTE = process.env.MCP_INSTRUCTIONS_NOTE?.trim() || undefined;
 const MCP_INSTRUCTIONS_FILE = process.env.MCP_INSTRUCTIONS_FILE?.trim() || undefined;
 const MCP_INSTRUCTIONS_ENV = process.env.MCP_INSTRUCTIONS?.trim() || undefined;
 let MCP_EXTRA_INSTRUCTIONS: string | undefined;
 const MCP_INSTRUCTIONS_MAX_BYTES = 32 * 1024;
-if (MCP_INSTRUCTIONS_FILE) {
+if (MCP_INSTRUCTIONS_NOTE) {
+    if (MCP_INSTRUCTIONS_FILE || MCP_INSTRUCTIONS_ENV) {
+        console.warn("MCP_INSTRUCTIONS_NOTE is set; ignoring file and environment instruction sources.");
+    }
+} else if (MCP_INSTRUCTIONS_FILE) {
     try {
         const size = statSync(MCP_INSTRUCTIONS_FILE).size;
         if (size > MCP_INSTRUCTIONS_MAX_BYTES) {
@@ -94,6 +99,20 @@ if (VAULT_PATH) {
 
 await vault.init();
 console.log("Vault ready.");
+
+if (MCP_INSTRUCTIONS_NOTE) {
+    const content = await vault.readNote(MCP_INSTRUCTIONS_NOTE);
+    if (content === null) {
+        console.error(`MCP_INSTRUCTIONS_NOTE not found in vault: ${MCP_INSTRUCTIONS_NOTE}`);
+        process.exit(1);
+    }
+    const size = Buffer.byteLength(content, "utf8");
+    if (size > MCP_INSTRUCTIONS_MAX_BYTES) {
+        console.error(`MCP_INSTRUCTIONS_NOTE is ${size} bytes, exceeds ${MCP_INSTRUCTIONS_MAX_BYTES} byte cap`);
+        process.exit(1);
+    }
+    MCP_EXTRA_INSTRUCTIONS = content.trim() || undefined;
+}
 
 // --- Per-vault data directory ---
 const baseDataDir = process.env.DATA_DIR ?? join(process.env.HOME ?? process.env.USERPROFILE ?? "/tmp", ".obsidian-mcp");

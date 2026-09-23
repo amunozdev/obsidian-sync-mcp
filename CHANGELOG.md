@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.4
+
+### Features
+
+- Add `FASTMCP_STATELESS=true` to serve each Streamable HTTP request independently without long-lived GET streams. Together with `COUCHDB_WATCH_CHANGES=false`, this lets network-idle platforms such as Railway Serverless suspend the process between MCP calls.
+
 ## 0.7.3
 
 ### Features

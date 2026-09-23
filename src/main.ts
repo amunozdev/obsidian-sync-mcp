@@ -32,6 +32,7 @@ const COUCHDB_DATABASE = process.env.COUCHDB_DATABASE ?? "obsidian";
 const COUCHDB_PASSPHRASE = process.env.COUCHDB_PASSPHRASE || undefined;
 const COUCHDB_OBFUSCATE_PROPERTIES = process.env.COUCHDB_OBFUSCATE_PROPERTIES === "true";
 const COUCHDB_WATCH_CHANGES = process.env.COUCHDB_WATCH_CHANGES !== "false";
+const FASTMCP_STATELESS = process.env.FASTMCP_STATELESS === "true";
 const VAULT_NAME = process.env.VAULT_NAME ?? "MyVault";
 const PORT = parseInt(process.env.PORT ?? "8787");
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${PORT}`;
@@ -345,9 +346,9 @@ setInterval(async () => {
 // --- Start server ---
 server.start({
     transportType: "httpStream",
-    httpStream: { port: PORT, endpoint: "/mcp", host: process.env.HOST ?? "0.0.0.0" },
+    httpStream: { port: PORT, endpoint: "/mcp", host: process.env.HOST ?? "0.0.0.0", stateless: FASTMCP_STATELESS },
 });
-console.log(`obsidian-sync-mcp v${PACKAGE_VERSION} listening on port ${PORT}`);
+console.log(`obsidian-sync-mcp v${PACKAGE_VERSION} listening on port ${PORT}${FASTMCP_STATELESS ? " (stateless)" : ""}`);
 
 // Prevent unhandled rejections from crashing the server (e.g. decryption failures in watcher)
 process.on("unhandledRejection", (err) => {

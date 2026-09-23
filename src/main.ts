@@ -31,6 +31,7 @@ const COUCHDB_PASSWORD = process.env.COUCHDB_PASSWORD;
 const COUCHDB_DATABASE = process.env.COUCHDB_DATABASE ?? "obsidian";
 const COUCHDB_PASSPHRASE = process.env.COUCHDB_PASSPHRASE || undefined;
 const COUCHDB_OBFUSCATE_PROPERTIES = process.env.COUCHDB_OBFUSCATE_PROPERTIES === "true";
+const COUCHDB_WATCH_CHANGES = process.env.COUCHDB_WATCH_CHANGES !== "false";
 const VAULT_NAME = process.env.VAULT_NAME ?? "MyVault";
 const PORT = parseInt(process.env.PORT ?? "8787");
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${PORT}`;
@@ -193,8 +194,15 @@ async function rebuildIndex() {
     }
     await searchIndex.saveToDisk();
 }
-// Fire and forget — server starts while index builds
-rebuildIndex().catch((err) => console.error("Index rebuild failed:", err));
+let indexSyncPromise: Promise<void> | null = null;
+const ensureIndexFresh = async () => {
+    if (indexSyncPromise) return indexSyncPromise;
+    indexSyncPromise = rebuildIndex().finally(() => {
+        indexSyncPromise = null;
+    });
+    return indexSyncPromise;
+};
+ensureIndexFresh().catch((err) => console.error("Index rebuild failed:", err));
 
 // --- Watch for external changes ---
 let fsWatcher: ReturnType<typeof watch> | null = null;
@@ -227,7 +235,7 @@ if (VAULT_PATH) {
         }
     }
     console.log("Watching vault for external changes.");
-} else if (COUCHDB_URL && vault.watchChanges) {
+} else if (COUCHDB_URL && vault.watchChanges && COUCHDB_WATCH_CHANGES) {
     // Remote mode: watch CouchDB _changes feed for LiveSync updates
     vault.watchChanges((path: string, content: string | null, mtime?: number, seq?: string | number) => {
         if (debugLogging) console.log(`[debug] CouchDB ${content === null ? "delete" : "change"}: ${path}`);
@@ -236,6 +244,8 @@ if (VAULT_PATH) {
         if (seq) searchIndex.since = String(seq);
     });
     console.log("Watching CouchDB for LiveSync changes.");
+} else if (COUCHDB_URL && !COUCHDB_WATCH_CHANGES) {
+    console.log("CouchDB changes will be synchronized on demand.");
 }
 
 // --- MCP Server ---
@@ -308,7 +318,8 @@ registerTools(server, vault, searchIndex, VAULT_NAME, READ_ONLY, WRITE_FOLDERS, 
     mode: VAULT_PATH ? "filesystem" : "couchdb",
     readOnly: READ_ONLY,
     version: PACKAGE_VERSION,
-});
+    changeTracking: COUCHDB_URL && !COUCHDB_WATCH_CHANGES ? "on-demand" : "watch",
+}, COUCHDB_URL && !COUCHDB_WATCH_CHANGES ? ensureIndexFresh : undefined);
 
 // --- Graceful shutdown ---
 async function shutdown() {

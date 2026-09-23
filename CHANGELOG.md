@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+### Features
+
+- Add `COUCHDB_WATCH_CHANGES=false` for serverless deployments. The server skips the persistent CouchDB changes feed and catches up the persisted metadata index before each tool call, allowing the container to become network-idle without serving stale index results after wake-up.
+
 ## 0.7.2
 
 ### Fixes

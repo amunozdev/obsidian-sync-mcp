@@ -11,6 +11,7 @@ export interface ServerStatus {
     mode: "filesystem" | "couchdb";
     readOnly: boolean;
     version: string;
+    changeTracking?: "watch" | "on-demand";
 }
 
 const debugLogging = process.env.LOG_LEVEL === "debug";
@@ -31,6 +32,7 @@ export function registerTools(
     readOnly = false,
     writeFolders: string[] | null = null,
     serverStatus: ServerStatus = { mode: "filesystem", readOnly, version: "unknown" },
+    beforeTool?: () => Promise<void>,
 ) {
     if (readOnly) {
         console.log(`READ_ONLY mode: write tools disabled (${WRITE_TOOLS.join(", ")}).`);
@@ -85,6 +87,7 @@ export function registerTools(
     server.addTool = (tool: any) => {
         const original = tool.execute;
         tool.execute = async (args: any, ctx: any) => {
+            await beforeTool?.();
             if (debugLogging) console.log(`[tool] ${tool.name}(${JSON.stringify(args)})`);
             const start = performance.now();
             const result = await original(args, ctx);

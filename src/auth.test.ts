@@ -460,6 +460,35 @@ describe("Token Refresh", () => {
     });
 });
 
+describe("Sliding refresh expiry", () => {
+    it("extends the session on each refresh", async () => {
+        const { app } = setup();
+        const tokens = await completeOAuthFlow(app, "test-password");
+        const realNow = Date.now;
+        try {
+            // 10 days later: refresh succeeds and must push expiry forward
+            Date.now = () => realNow() + 10 * 24 * 3600 * 1000;
+            const r1 = await app.request("/oauth/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token }).toString(),
+            });
+            assert.equal(r1.status, 200);
+            const t1 = (await r1.json()) as any;
+            // 20 days after login (10 after last refresh): still valid with the default 14 days
+            Date.now = () => realNow() + 20 * 24 * 3600 * 1000;
+            const r2 = await app.request("/oauth/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: t1.refresh_token }).toString(),
+            });
+            assert.equal(r2.status, 200);
+        } finally {
+            Date.now = realNow;
+        }
+    });
+});
+
 describe("validateToken", () => {
     it("returns false for undefined", () => {
         const { validateToken } = setup();

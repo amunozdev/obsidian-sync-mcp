@@ -423,11 +423,15 @@ export function mountPasswordAuth(app: Hono, baseUrl: string, password: string, 
                 refreshToken: newRefreshToken,
                 clientId: old.clientId,
                 expiresAt: Date.now() + TOKEN_EXPIRY_MS,
-                refreshExpiresAt: old.refreshExpiresAt, // keep original expiry
+                // Sliding window: every successful refresh extends the session, so it
+                // only expires after MCP_REFRESH_DAYS of *inactivity* (as documented),
+                // not a fixed number of days after the first login.
+                refreshExpiresAt: Date.now() + REFRESH_EXPIRY_MS,
             };
             tokens.set(accessToken, record);
             refreshTokens.set(newRefreshToken, record);
             await persist();
+            console.log(`Auth: /oauth/token refreshed client_id=${old.clientId} session_valid_until=${new Date(record.refreshExpiresAt).toISOString()}`);
 
             return c.json({
                 access_token: accessToken,
@@ -487,7 +491,7 @@ export function mountPasswordAuth(app: Hono, baseUrl: string, password: string, 
                     const client = v as RegisteredClient;
                     if (client.clientId && client.redirectUris) clients.set(k, client);
                 }
-                console.log(`Auth tokens loaded from disk (${tokens.size} sessions).`);
+                console.log(`Auth tokens loaded from disk (${tokens.size} access, ${refreshTokens.size} refresh, ${clients.size} clients).`);
                 return tokens.size > 0;
             } catch {
                 return false;

@@ -320,7 +320,7 @@ registerTools(server, vault, searchIndex, VAULT_NAME, READ_ONLY, WRITE_FOLDERS, 
     readOnly: READ_ONLY,
     version: PACKAGE_VERSION,
     changeTracking: COUCHDB_URL && !COUCHDB_WATCH_CHANGES ? "on-demand" : "watch",
-}, COUCHDB_URL && !COUCHDB_WATCH_CHANGES ? ensureIndexFresh : undefined);
+}, COUCHDB_URL && !COUCHDB_WATCH_CHANGES ? ensureIndexFresh : undefined, auth ? auth.authStatus : undefined);
 
 // --- Graceful shutdown ---
 async function shutdown() {

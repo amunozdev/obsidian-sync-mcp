@@ -59,6 +59,7 @@ export interface AuthHandle {
     saveTokens: () => Promise<void>;
     loadTokens: () => Promise<boolean>;
     cleanup: () => void;
+    authStatus: () => { oauth_sessions: number; oauth_session_valid_until: string | null };
 }
 
 export function mountPasswordAuth(app: Hono, baseUrl: string, password: string, persistPath?: string): AuthHandle {
@@ -460,6 +461,16 @@ export function mountPasswordAuth(app: Hono, baseUrl: string, password: string, 
 
         async saveTokens(): Promise<void> {
             await persist();
+        },
+
+        authStatus() {
+            const now = Date.now();
+            const active = [...refreshTokens.values()].filter((r) => r.refreshExpiresAt > now);
+            const latest = Math.max(0, ...active.map((r) => r.refreshExpiresAt));
+            return {
+                oauth_sessions: active.length,
+                oauth_session_valid_until: latest ? new Date(latest).toISOString() : null,
+            };
         },
 
         cleanup(): void {

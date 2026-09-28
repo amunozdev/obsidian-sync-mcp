@@ -8,7 +8,7 @@ function setup(password = "test-password") {
     const app = new Hono();
     const baseUrl = "https://example.com";
     const auth = mountPasswordAuth(app, baseUrl, password);
-    return { app, baseUrl, validateToken: auth.validateToken };
+    return { app, baseUrl, validateToken: auth.validateToken, authStatus: auth.authStatus };
 }
 
 function generatePKCE() {
@@ -486,6 +486,24 @@ describe("Sliding refresh expiry", () => {
         } finally {
             Date.now = realNow;
         }
+    });
+});
+
+describe("authStatus", () => {
+    it("reports no session before login", () => {
+        const { authStatus } = setup();
+        assert.deepEqual(authStatus(), { oauth_sessions: 0, oauth_session_valid_until: null });
+    });
+
+    it("reports the session expiry after login", async () => {
+        const { app, authStatus } = setup();
+        const before = Date.now();
+        await completeOAuthFlow(app, "test-password");
+        const status = authStatus();
+        assert.equal(status.oauth_sessions, 1);
+        const until = Date.parse(status.oauth_session_valid_until!);
+        assert.ok(until >= before + 14 * 24 * 3600 * 1000);
+        assert.ok(until <= Date.now() + 14 * 24 * 3600 * 1000);
     });
 });
 

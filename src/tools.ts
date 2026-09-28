@@ -33,6 +33,7 @@ export function registerTools(
     writeFolders: string[] | null = null,
     serverStatus: ServerStatus = { mode: "filesystem", readOnly, version: "unknown" },
     beforeTool?: () => Promise<void>,
+    authStatus?: () => Record<string, unknown>,
 ) {
     if (readOnly) {
         console.log(`READ_ONLY mode: write tools disabled (${WRITE_TOOLS.join(", ")}).`);
@@ -618,6 +619,7 @@ export function registerTools(
             indexed_notes: searchIndex.size,
             write_folders: writeFolders,
             supported_text_extensions: textFileExtensions,
+            ...authStatus?.(),
         }),
     });
 }
